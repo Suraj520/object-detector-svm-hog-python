@@ -7,6 +7,7 @@ from sklearn.externals import joblib
 import argparse as ap
 import glob
 import os
+import fnmatch
 from config import *
 
 if __name__ == "__main__":
@@ -34,7 +35,12 @@ if __name__ == "__main__":
         os.makedirs(neg_feat_ph)
 
     print "Calculating the descriptors for the positive samples and saving them"
-    for im_path in glob.glob(os.path.join(pos_im_path, "*")):
+    matches = []
+    for root, dirnames, filenames in os.walk(pos_im_path):
+        for filename in fnmatch.filter(filenames, '*.jpg'):
+            matches.append(os.path.join(root, filename))
+    #for im_path in glob.glob(os.path.join(pos_im_path, "*")):
+    for im_path in matches:
         im = imread(im_path, as_grey=True)
         if des_type == "HOG":
             fd = hog(im, orientations, pixels_per_cell, cells_per_block, visualize, normalize)

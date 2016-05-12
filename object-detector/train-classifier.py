@@ -25,16 +25,25 @@ if __name__ == "__main__":
     fds = []
     labels = []
     # Load the positive features
+    print "Loading positive features"
     for feat_path in glob.glob(os.path.join(pos_feat_path,"*.feat")):
         fd = joblib.load(feat_path)
         fds.append(fd)
         labels.append(1)
+    #fds_pos = [joblib.load(feat_path) for feat_path in glob.glob(os.path.join(pos_feat_path,"*.feat"))]
+    #labels_pos = [1] * glob.glob(os.path.join(pos_feat_path,"*.feat")).__len__()
 
     # Load the negative features
+    print "Loading negative features"
     for feat_path in glob.glob(os.path.join(neg_feat_path,"*.feat")):
         fd = joblib.load(feat_path)
         fds.append(fd)
         labels.append(0)
+    #fds_neg = [joblib.load(feat_path) for feat_path in glob.glob(os.path.join(neg_feat_path,"*.feat"))]
+    #labels_neg = [0] * glob.glob(os.path.join(neg_feat_path,"*.feat")).__len__()
+
+    #fds = fds_pos + fds_neg
+    #labels = labels_pos + labels_neg
 
     if clf_type is "LIN_SVM":
         clf = LinearSVC()

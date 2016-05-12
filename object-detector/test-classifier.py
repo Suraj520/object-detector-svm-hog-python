@@ -5,6 +5,9 @@ from skimage.feature import hog
 from sklearn.externals import joblib
 import cv2
 import argparse as ap
+import imutils
+import numpy as np
+import ntpath
 from nms import nms
 from config import *
 
@@ -29,20 +32,35 @@ def sliding_window(image, window_size, step_size):
         for x in xrange(0, image.shape[1], step_size[0]):
             yield (x, y, image[y:y + window_size[1], x:x + window_size[0]])
 
+def pyramid(image, scale, minSize):
+    # yield the original image
+    yield image
+    # keep looping over the pyramid
+    while True:
+        #compute the new dimensions of the image and resize it
+        w = int(image.shape[1] / scale)
+        image = imutils.resize(image, width=w)
+        # if the resized image does not meet the supplied minimum
+        #  size, then stop constructing the pyramid
+        if image.shape[0] < minSize[1] or image.shape[1] < minSize[0]:
+            break
+        # yield the next image in the pyramid
+        yield image
+
 if __name__ == "__main__":
     # Parse the command line arguments
     parser = ap.ArgumentParser()
     parser.add_argument('-i', "--image", help="Path to the test image", required=True)
     parser.add_argument('-d','--downscale', help="Downscale ratio", default=1.25,
-            type=int)
+            type=float)
     parser.add_argument('-v', '--visualize', help="Visualize the sliding window",
             action="store_true")
     args = vars(parser.parse_args())
 
     # Read the image
-    im = imread(args["image"], as_grey=False)
-    min_wdw_sz = (100, 40)
-    step_size = (10, 10)
+    im = imread(args["image"], as_grey=True)
+    #min_wdw_sz = (40, 40)
+    #step_size = (8, 8)
     downscale = args['downscale']
     visualize_det = args['visualize']
 
@@ -54,7 +72,8 @@ if __name__ == "__main__":
     # The current scale of the image
     scale = 0
     # Downscale the image and iterate
-    for im_scaled in pyramid_gaussian(im, downscale=downscale):
+    for im_scaled in pyramid(image=im, scale=downscale, minSize=min_wdw_sz):
+    #for im_scaled in pyramid_gaussian(image=im, downscale=downscale):
         # This list contains detections at the current scale
         cd = []
         # If the width or height of the scaled image is less than
@@ -66,14 +85,20 @@ if __name__ == "__main__":
                 continue
             # Calculate the HOG features
             fd = hog(im_window, orientations, pixels_per_cell, cells_per_block, visualize, normalize)
+            # Remove scikit deprecation warning
+            fd = np.array(fd).reshape(1, (len(fd)))
             pred = clf.predict(fd)
-            if pred == 1:
-                print  "Detection:: Location -> ({}, {})".format(x, y)
+            confidence_score = clf.decision_function(fd)
+            if pred == 1 and confidence_score >= detection_threshold:
+                print "Detection:: Location -> ({}, {})".format(x, y)
                 print "Scale ->  {} | Confidence Score {} \n".format(scale,clf.decision_function(fd))
-                detections.append((x, y, clf.decision_function(fd),
+                detections.append((int(x*(downscale**scale)), int(y*(downscale**scale)), clf.decision_function(fd),
                     int(min_wdw_sz[0]*(downscale**scale)),
                     int(min_wdw_sz[1]*(downscale**scale))))
-                cd.append(detections[-1])
+                #cd.append(detections[-1])
+                cd.append((x, y, clf.decision_function(fd),
+                    int(min_wdw_sz[0]*(downscale**scale)),
+                    int(min_wdw_sz[1]*(downscale**scale))))
             # If visualize is set to true, display the working
             # of the sliding window
             if visualize_det:
@@ -85,24 +110,27 @@ if __name__ == "__main__":
                 cv2.rectangle(clone, (x, y), (x + im_window.shape[1], y +
                     im_window.shape[0]), (255, 255, 255), thickness=2)
                 cv2.imshow("Sliding Window in Progress", clone)
-                cv2.waitKey(30)
+                cv2.waitKey(1)
         # Move the the next scale
         scale+=1
 
     # Display the results before performing NMS
+    clone_before_nms = im.copy()
     clone = im.copy()
     for (x_tl, y_tl, _, w, h) in detections:
         # Draw the detections
-        cv2.rectangle(im, (x_tl, y_tl), (x_tl+w, y_tl+h), (0, 0, 0), thickness=2)
-    cv2.imshow("Raw Detections before NMS", im)
+        cv2.rectangle(clone_before_nms, (x_tl, y_tl), (x_tl+w, y_tl+h), (0, 0, 0), thickness=2)
+    cv2.imshow("Raw Detections before NMS", clone_before_nms)
     cv2.waitKey()
 
     # Perform Non Maxima Suppression
-    detections = nms(detections, threshold)
+    detections = nms(detections, nms_threshold)
 
     # Display the results after performing NMS
+    image = cv2.cvtColor(imread(args["image"]),cv2.COLOR_BGR2RGB)
     for (x_tl, y_tl, _, w, h) in detections:
         # Draw the detections
-        cv2.rectangle(clone, (x_tl, y_tl), (x_tl+w,y_tl+h), (0, 0, 0), thickness=2)
-    cv2.imshow("Final Detections after applying NMS", clone)
+        cv2.rectangle(image, (x_tl, y_tl), (x_tl+w,y_tl+h), (0, 0, 255), thickness=2)
+    cv2.imshow("Final Detections after applying NMS", image)
+    cv2.imwrite("../data/images/{}".format(ntpath.basename(args["image"])),image)
     cv2.waitKey()
